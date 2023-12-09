@@ -9,31 +9,69 @@ import (
 )
 
 func main() {
-    // 连接到socks5代理服务器
 
-    dialer, err := proxy.SOCKS5("tcp", "127.0.0.1:8000", nil, proxy.Direct)
+    // 读取 client.json 配置文件
+    config := NewConfig("127.0.0.1", 8000, 9999, "127.0.0.1", "tcp")
+
+    // 连接到socks5代理服务器
+    dialer, err := proxy.SOCKS5(config.Proto, config.GetProxyServerAddr(), nil, proxy.Direct)
+
     if err != nil {
         log.Fatal(err)
     }
 
-    // 创建一个 tcp 服务 监听9999端口
-    listener, err := net.Listen("tcp", ":9999")
-    for {
-        // 有新的连接进来时 接受连接
-        fmt.Println("Waiting for connection...")
-        conn, err := listener.Accept()
-        if err != nil {
-            log.Fatal(err)
-        }
-        // 连接socks5服务器
-        fmt.Println("Connected")
-        sock5_conn, err := dialer.Dial("tcp", "127.0.0.1:8002")
-        if err != nil {
-            log.Fatal(err)
-        }
-        go communicate(conn, sock5_conn)
-
+    locals := []LocalServer{
+        {
+            ServerAddr: "127.0.0.1",
+            ServerPort: 9083,
+            Target: TargetServer{
+                ServerAddr: "127.0.0.1",
+                ServerPort: 8083,
+            },
+        },
+        {
+            ServerAddr: "127.0.0.1",
+            ServerPort: 9084,
+            Target: TargetServer{
+                ServerAddr: "127.0.0.1",
+                ServerPort: 8084,
+            },
+        },
+        {
+            ServerAddr: "127.0.0.1",
+            ServerPort: 9085,
+            Target: TargetServer{
+                ServerAddr: "127.0.0.1",
+                ServerPort: 8085,
+            },
+        },
     }
+
+    for _, local := range locals {
+        listener, err := net.Listen(config.Proto, local.GetLocalAddr())
+        if err != nil {
+            log.Fatal(err)
+        }
+        go func(local LocalServer) {
+            for {
+                // 有新的连接进来时 接受连接
+                fmt.Println("Waiting for connection...")
+                conn, err := listener.Accept()
+                if err != nil {
+                    log.Fatal(err)
+                }
+                // 连接socks5服务器
+                fmt.Println("Connected", conn)
+                sock5_conn, err := dialer.Dial("tcp", local.Target.GetServerAddr())
+                if err != nil {
+                    log.Fatal(err)
+                }
+                go communicate(conn, sock5_conn)
+            }
+        }(local)
+    }
+
+    select {}
 
 }
 
